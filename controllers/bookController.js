@@ -2,8 +2,11 @@ const Book = require('../models/book');
 const Author = require('../models/author');
 const Genre = require('../models/genre');
 const BookInstance = require('../models/bookinstance');
-
 const async = require('async');
+
+const { body, validationResult } = require('express-validator/check')
+const { sanitizeBody } = require('express-validator/filter')
+
 
 exports.index = (req, res) => {
   // res.send('未实现：站点首页');
@@ -38,16 +41,16 @@ exports.index = (req, res) => {
 exports.book_list = (req, res, next) => {
   // res.send('未实现：藏书列表');
   Book.find({}, 'title author').
-  populate('author').
-  exec(function (err, list_books) {
-    if (err) {
-      return next(err)
-    }
-    res.render('book_list', {
-      title: 'Book List',
-      book_list: list_books
+    populate('author').
+    exec(function (err, list_books) {
+      if (err) {
+        return next(err)
+      }
+      res.render('book_list', {
+        title: 'Book List',
+        book_list: list_books
+      })
     })
-  })
 };
 
 // 为每种藏书显示详细信息的页面
@@ -62,8 +65,8 @@ exports.book_detail = (req, res, next) => {
     },
     book_instance: function (callback) {
       BookInstance.find({
-          'book': req.params.id
-        })
+        'book': req.params.id
+      })
         .exec(callback)
     }
   }, function (err, results) {
@@ -82,14 +85,89 @@ exports.book_detail = (req, res, next) => {
 };
 
 // 由 GET 显示创建藏书的表单
-exports.book_create_get = (req, res) => {
-  res.send('未实现：藏书创建表单的 GET');
+exports.book_create_get = (req, res, next) => {
+  // res.send('未实现：藏书创建表单的 GET');
+  async.parallel({
+    authors: function (callback) {
+      Author.find(callback)
+    },
+    genres: function (callback) {
+      Genre.find(callback)
+    }
+  }, function (err, results) {
+    if (err) { return next(err) }
+    res.render('book_form', { title: 'Create Book', authors: results.authors, genres: results.genres })
+  })
 };
 
 // 由 POST 处理藏书创建操作
-exports.book_create_post = (req, res) => {
-  res.send('未实现：创建藏书的 POST');
-};
+exports.book_create_post = (req, res) => [
+  (req, res, next) => {
+    if ((!req.body, genre instanceof Array)) {
+      if (typeof req.body.genre === 'undefined')
+        req.body.genre = []
+      else
+        req.body.genre = new Array(req.body.genre)
+    }
+    next()
+  },
+
+  body('title', 'Title must not be empty').isLength({ min: 1 }).trim(),
+  body('author', 'Author must not be empty').isLength({ min: 1 }).trim(),
+  body('summary', 'Summary must not be empty').isLength({ min: 1 }).trim(),
+  body('isBn', 'ISBN must not be empty').isLength({ min: 1 }).trim(),
+
+  sanitizeBody('*').trim().escape(),
+  sanitizeBody('genre.*').escape(),
+
+  (req, res, next) => {
+
+    const errors = validationResult(req)
+
+    var book = new Book({
+      title: req.body, title,
+      author: req.body.author,
+      summary: req.body.summary,
+      isbn: req.body.isbn,
+      genre: req.body, genre
+    })
+
+    if (!errors.isEmpty()) {
+      async.parallel({
+        authors: function (callback) {
+          Author.find(callback)
+        },
+        genre: function (callback) {
+          Genre.find(callback)
+        }
+      }, function (err, results) {
+        if (err) return next(err)
+
+        for (let i = 0; i < results.genres.length; i++) {
+          if (book.genre.indexOf(results.genres[i]._id) > -1) {
+            results.genres[i].checked = 'true'
+          }
+        }
+
+        res.render('book_form', {
+          title: 'Create Book',
+          authors: results.authors,
+          genres: results.genres,
+          book: book,
+          errors: errors.array()
+        });
+      })
+      return
+    } else {
+      book.save(function (err) {
+        if (err) { return next(err) }
+        res.redirect(book.url)
+      })
+    }
+
+  }
+
+]
 
 // 由 GET 显示删除藏书的表单
 exports.book_delete_get = (req, res) => {
