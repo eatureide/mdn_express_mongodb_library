@@ -3,6 +3,12 @@ extends layout
 block content
   h1 #{title}: #{book.title}
 
+    hr
+  p
+    a(href=book.url+'/delete') Delete Book
+  p
+    a(href=book.url+'/update') Update Book
+
   p #[strong Author:]
     a(href=book.author.url) #{book.author.name}
   p #[strong Summary:] #{book.summary}
